@@ -1,146 +1,247 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>International GPA Calculator</title>
-<style>
-body {
-  font-family: Arial, sans-serif;
-  background: #f4f6f8;
-  padding: 30px;
-}
-.container {
-  max-width: 800px;
-  margin: auto;
-  background: white;
-  padding: 25px;
-  border-radius: 10px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.1);
-}
-h1 {
-  text-align: center;
-}
-.course {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr auto;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-input, select, button {
-  padding: 8px;
-  font-size: 14px;
-}
-button {
-  cursor: pointer;
-}
-.add-btn {
-  margin-top: 10px;
-}
-.result {
-  margin-top: 20px;
-  font-size: 18px;
-  font-weight: bold;
-}
-.small {
-  color: #666;
-  font-size: 13px;
-}
-.remove {
-  background: #ff4d4f;
-  color: white;
-  border: none;
-  border-radius: 4px;
-}
-</style>
-</head>
-
-<body>
-<div class="container">
-  <h1>International GPA Calculator</h1>
-  <p class="small">
-    Supports letter grades, credit weighting, and 4.0 / 4.3 scales.
-  </p>
-
-  <label>GPA Scale:</label>
-  <select id="scale">
-    <option value="4.0">4.0 Scale</option>
-    <option value="4.3">4.3 Scale</option>
-  </select>
-
-  <hr>
-
-  <div id="courses"></div>
-
-  <button class="add-btn" onclick="addCourse()">+ Add Course</button>
-  <button onclick="calculateGPA()">Calculate GPA</button>
-
-  <div class="result" id="result"></div>
-</div>
-
 <script>
-const gradeMap4 = {
-  "A+": 4.0, "A": 4.0, "A-": 3.7,
-  "B+": 3.3, "B": 3.0, "B-": 2.7,
-  "C+": 2.3, "C": 2.0, "C-": 1.7,
-  "D": 1.0, "F": 0.0
+/* =========================
+   PAGE SYSTEM ENGINE
+========================= */
+
+const PageSystem = {
+  pages: {},
+  current: null,
+
+  register(name, config) {
+    this.pages[name] = config;
+  },
+
+  mount(name) {
+    const page = this.pages[name];
+    if (!page) return;
+
+    this.current = name;
+
+    document.getElementById("app").innerHTML = page.render();
+    page.onMount && page.onMount();
+
+    document.querySelectorAll("nav button").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.page === name);
+    });
+  }
 };
 
-const gradeMap43 = {
-  "A+": 4.3, "A": 4.0, "A-": 3.7,
-  "B+": 3.3, "B": 3.0, "B-": 2.7,
-  "C+": 2.3, "C": 2.0, "C-": 1.7,
-  "D": 1.0, "F": 0.0
-};
+/* =========================
+   NAV RENDER
+========================= */
 
-function addCourse() {
-  const div = document.createElement("div");
-  div.className = "course";
-  div.innerHTML = `
-    <input placeholder="Course name (optional)">
-    <select>
-      <option>A+</option><option>A</option><option>A-</option>
-      <option>B+</option><option>B</option><option>B-</option>
-      <option>C+</option><option>C</option><option>C-</option>
-      <option>D</option><option>F</option>
-    </select>
-    <input type="number" step="0.5" placeholder="Credits">
-    <button class="remove" onclick="this.parentElement.remove()">✕</button>
-  `;
-  document.getElementById("courses").appendChild(div);
+function renderNav() {
+  const nav = document.querySelector("nav");
+  nav.innerHTML = "";
+
+  Object.keys(PageSystem.pages).forEach(name => {
+    const btn = document.createElement("button");
+    btn.innerText = name;
+    btn.dataset.page = name;
+    btn.onclick = () => PageSystem.mount(name);
+    nav.appendChild(btn);
+  });
 }
 
-function calculateGPA() {
-  const scale = document.getElementById("scale").value;
-  const map = scale === "4.3" ? gradeMap43 : gradeMap4;
+/* =========================
+   ROOT APP CONTAINER
+========================= */
 
-  const courses = document.querySelectorAll(".course");
-  let totalPoints = 0;
-  let totalCredits = 0;
+document.body.insertAdjacentHTML(
+  "beforeend",
+  `<div id="app" style="padding:20px;"></div>`
+);
 
-  courses.forEach(course => {
-    const grade = course.children[1].value;
-    const credits = parseFloat(course.children[2].value);
+/* =========================
+   DEFAULT PAGES (PHASE 1)
+========================= */
 
-    if (!isNaN(credits)) {
-      totalPoints += map[grade] * credits;
-      totalCredits += credits;
-    }
+PageSystem.register("Dashboard", {
+  render() {
+    return `
+      <div class="card">
+        <h3>System Overview</h3>
+        <p class="small">Core Version: ${Core.version}</p>
+        <p>Overall GPA: <b>${GPAEngine.calculateOverall()}</b></p>
+        <p>${AIAdvisor.advise()}</p>
+      </div>
+    `;
+  }
+});
+
+PageSystem.register("Profile", {
+  render() {
+    const p = Core.state.user || {};
+    return `
+      <div class="card">
+        <h3>Student Profile</h3>
+        <input id="name" placeholder="Name" value="${p.name || ""}">
+        <input id="major" placeholder="Major" value="${p.major || ""}">
+        <button class="primary" onclick="saveProfile()">Save</button>
+      </div>
+    `;
+  }
+});
+
+/* =========================
+   PAGE ACTIONS
+========================= */
+
+function saveProfile() {
+  Core.state.user.name = document.getElementById("name").value;
+  Core.state.user.major = document.getElementById("major").value;
+  Core.emit("profile:update");
+}
+
+/* =========================
+   SYSTEM BOOT (PHASE 1)
+========================= */
+
+renderNav();
+PageSystem.mount("Dashboard");
+</script>
+<script>
+/* =========================
+   PHASE 2A: COURSE ENGINE
+========================= */
+
+/*
+ 数据结构设计（非常重要）
+ Core.state.semesters = [
+   {
+     id,
+     name,
+     courses: [
+       {
+         id,
+         name,
+         credits,
+         grade,
+         status // normal | pass | fail | withdraw
+       }
+     ]
+   }
+ ]
+*/
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/* =========================
+   SEMESTER OPERATIONS
+========================= */
+
+const SemesterAPI = {
+  create(name) {
+    const semester = {
+      id: uid(),
+      name,
+      courses: []
+    };
+    Core.state.semesters.push(semester);
+    Core.emit("semester:create", semester);
+  },
+
+  remove(id) {
+    Core.state.semesters =
+      Core.state.semesters.filter(s => s.id !== id);
+    Core.emit("semester:remove", id);
+  },
+
+  get(id) {
+    return Core.state.semesters.find(s => s.id === id);
+  }
+};
+
+/* =========================
+   COURSE OPERATIONS
+========================= */
+
+const CourseAPI = {
+  add(semesterId, data) {
+    const sem = SemesterAPI.get(semesterId);
+    if (!sem) return;
+
+    sem.courses.push({
+      id: uid(),
+      name: data.name || "Untitled Course",
+      credits: Number(data.credits) || 0,
+      grade: data.grade || "A",
+      status: data.status || "normal"
+    });
+
+    Core.emit("course:add", semesterId);
+  },
+
+  update(semesterId, courseId, patch) {
+    const sem = SemesterAPI.get(semesterId);
+    if (!sem) return;
+
+    const c = sem.courses.find(c => c.id === courseId);
+    if (!c) return;
+
+    Object.assign(c, patch);
+    Core.emit("course:update", { semesterId, courseId });
+  },
+
+  remove(semesterId, courseId) {
+    const sem = SemesterAPI.get(semesterId);
+    if (!sem) return;
+
+    sem.courses = sem.courses.filter(c => c.id !== courseId);
+    Core.emit("course:remove", { semesterId, courseId });
+  }
+};
+
+/* =========================
+   GPA ENGINE UPGRADE
+========================= */
+
+GPAEngine.calculateSemester = function (semester) {
+  let pts = 0, cr = 0;
+
+  semester.courses.forEach(c => {
+    if (c.status === "withdraw") return;
+
+    const g = this.gradeMap[c.grade];
+    if (g === undefined) return;
+
+    pts += g * c.credits;
+    cr += c.credits;
   });
 
-  if (totalCredits === 0) {
-    document.getElementById("result").innerText = "Please enter valid courses.";
-    return;
-  }
+  return cr ? (pts / cr) : 0;
+};
 
-  const gpa = (totalPoints / totalCredits).toFixed(2);
+GPAEngine.calculateOverall = function () {
+  let totalPts = 0;
+  let totalCr = 0;
 
-  document.getElementById("result").innerHTML = `
-    GPA: <strong>${gpa}</strong><br>
-    Total Credits: ${totalCredits}
-  `;
-}
+  Core.state.semesters.forEach(s => {
+    s.courses.forEach(c => {
+      if (c.status === "withdraw") return;
+      const g = this.gradeMap[c.grade];
+      if (g === undefined) return;
 
-addCourse();
+      totalPts += g * c.credits;
+      totalCr += c.credits;
+    });
+  });
+
+  return totalCr ? (totalPts / totalCr).toFixed(2) : "—";
+};
+
+/* =========================
+   SYSTEM EVENTS (HOOKS)
+========================= */
+
+Core.on("semester:create", () => {
+  console.log("Semester created");
+});
+
+Core.on("course:add", () => {
+  console.log("Course added");
+});
+
 </script>
-</body>
-</html>
