@@ -513,4 +513,212 @@ render();
 
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ultimate Academic Planning Engine v4</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{
+  margin:0;
+  padding:20px;
+  background:#020617;
+  color:#e5e7eb;
+  font-family:Arial,Helvetica,sans-serif;
+}
+h1,h2,h3{color:#38bdf8}
+section{
+  background:#020617;
+  border:1px solid #1e293b;
+  border-radius:12px;
+  padding:16px;
+  margin-bottom:20px;
+}
+input,select,textarea{
+  width:100%;
+  padding:6px;
+  margin-bottom:10px;
+  border-radius:6px;
+  border:none;
+}
+button{
+  background:#38bdf8;
+  color:#020617;
+  border:none;
+  border-radius:8px;
+  padding:8px 14px;
+  font-weight:bold;
+  cursor:pointer;
+}
+button:hover{background:#0ea5e9}
+.good{color:#4ade80}
+.warn{color:#facc15}
+.bad{color:#f87171}
+.course{
+  border-bottom:1px solid #1e293b;
+  padding-bottom:10px;
+  margin-bottom:10px;
+}
+canvas{
+  background:#020617;
+  border-radius:8px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎓 Academic Planning Engine</h1>
+<p>Decision-level academic planning for international students</p>
+
+<section>
+<h2>1️⃣ School & Graduation Settings</h2>
+<label>Total Credits Required for Graduation</label>
+<input type="number" id="gradCredits" value="120">
+<label>Target Graduation GPA</label>
+<input type="number" step="0.01" id="gradTarget" value="3.2">
+<label>Risk Tolerance</label>
+<select id="riskMode">
+  <option value="safe">Safe</option>
+  <option value="balanced">Balanced</option>
+  <option value="aggressive">Aggressive</option>
+</select>
+</section>
+
+<section>
+<h2>2️⃣ Completed / Planned Courses</h2>
+<div id="courses"></div>
+<button onclick="addCourse()">+ Add Course</button>
+</section>
+
+<section>
+<h2>3️⃣ Academic Status Overview</h2>
+<p id="status"></p>
+<p id="decision"></p>
+</section>
+
+<section>
+<h2>4️⃣ Graduation GPA Simulation</h2>
+<p id="simulation"></p>
+<canvas id="futureChart" width="320" height="160"></canvas>
+</section>
+
+<section>
+<h2>5️⃣ Strategy Recommendation</h2>
+<p id="strategy"></p>
+</section>
+
+<script>
+let courses = JSON.parse(localStorage.getItem("v4_courses")||"[]");
+
+function addCourse(name="",grade="",credit=3,diff=1){
+  courses.push({name,grade,credit,diff});
+  save();
+}
+function save(){
+  localStorage.setItem("v4_courses",JSON.stringify(courses));
+  render();
+}
+
+function gradeToGPA(g){
+  if(!isNaN(g)){
+    if(g>=90)return 4;
+    if(g>=80)return 3.7;
+    if(g>=70)return 3;
+    if(g>=60)return 2;
+    return 0;
+  }
+  const m={A:4,"A-":3.7,"B+":3.3,B:3,"B-":2.7,C:2,D:1,F:0};
+  return m[g.toUpperCase()]??0;
+}
+
+function render(){
+  const box=document.getElementById("courses");
+  box.innerHTML="";
+  courses.forEach((c,i)=>{
+    box.innerHTML+=`
+    <div class="course">
+      <label>Course</label>
+      <input value="${c.name}" onchange="courses[${i}].name=this.value;save()">
+      <label>Grade (or expected)</label>
+      <input value="${c.grade}" onchange="courses[${i}].grade=this.value;save()">
+      <label>Credits</label>
+      <input type="number" value="${c.credit}" onchange="courses[${i}].credit=this.value;save()">
+      <label>Difficulty (1–5)</label>
+      <input type="number" min="1" max="5" value="${c.diff}" onchange="courses[${i}].diff=this.value;save()">
+    </div>`;
+  });
+  calculate();
+}
+
+function calculate(){
+  let total=0,credits=0;
+  courses.forEach(c=>{
+    total+=gradeToGPA(c.grade)*c.credit;
+    credits+=Number(c.credit);
+  });
+  const gpa=credits?total/credits:0;
+  const gradCredits=+document.getElementById("gradCredits").value;
+  const target=+document.getElementById("gradTarget").value;
+  const remain=gradCredits-credits;
+
+  document.getElementById("status").innerHTML=
+    `Completed Credits: ${credits} / ${gradCredits}<br>
+     Current GPA: ${gpa.toFixed(2)}`;
+
+  let futureNeed = remain>0
+    ? ((target*(credits+remain)-total)/remain)
+    : 0;
+
+  let decision="";
+
+  if(futureNeed>4){
+    decision="<span class='bad'>Graduation target mathematically impossible</span>";
+  }else if(futureNeed>3.7){
+    decision="<span class='warn'>Extremely high performance required</span>";
+  }else{
+    decision="<span class='good'>Graduation target achievable</span>";
+  }
+
+  document.getElementById("decision").innerHTML=decision;
+
+  document.getElementById("simulation").innerText=
+    remain>0
+    ? `Required average GPA for remaining credits: ${futureNeed.toFixed(2)}`
+    : "All credits completed";
+
+  drawFuture(gpa,futureNeed);
+  recommend(futureNeed);
+}
+
+function drawFuture(current,need){
+  const ctx=document.getElementById("futureChart").getContext("2d");
+  ctx.clearRect(0,0,320,160);
+  ctx.strokeStyle="#38bdf8";
+  ctx.beginPath();
+  ctx.moveTo(10,150-current*30);
+  ctx.lineTo(300,150-need*30);
+  ctx.stroke();
+}
+
+function recommend(need){
+  const mode=document.getElementById("riskMode").value;
+  let msg="";
+  if(mode==="safe"){
+    msg="Prioritize low-difficulty GPA boosters and avoid overload.";
+  }else if(mode==="balanced"){
+    msg="Mix core courses with GPA stabilizers.";
+  }else{
+    msg="High-risk strategy: maximize credit weight on strong subjects.";
+  }
+  document.getElementById("strategy").innerText=
+    `System Recommendation: ${msg}`;
+}
+
+render();
+</script>
+
+</body>
+</html>
 
