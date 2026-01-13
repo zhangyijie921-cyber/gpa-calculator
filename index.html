@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Monster Academic System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+/* =========================
+   GLOBAL STYLE
+========================= */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+}
+header {
+  background: #020617;
+  padding: 16px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: bold;
+}
+nav {
+  display: flex;
+  background: #020617;
+  border-bottom: 1px solid #1e293b;
+}
+nav button {
+  flex: 1;
+  padding: 12px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+}
+nav button.active {
+  background: #1e293b;
+  color: #fff;
+}
+#app {
+  padding: 20px;
+}
+.card {
+  background: #020617;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+h3 {
+  margin-top: 0;
+}
+input, select {
+  width: 100%;
+  padding: 8px;
+  margin-top: 6px;
+  background: #020617;
+  border: 1px solid #334155;
+  color: #fff;
+  border-radius: 6px;
+}
+button.primary {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  background: #2563eb;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+}
+button.danger {
+  background: #dc2626;
+  border: none;
+  padding: 6px 10px;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+.table th, .table td {
+  padding: 8px;
+  border-bottom: 1px solid #334155;
+  text-align: left;
+}
+.small {
+  font-size: 13px;
+  color: #94a3b8;
+}
+.flex {
+  display: flex;
+  gap: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<header>🎓 Monster Academic System</header>
+<nav id="nav"></nav>
+<div id="app"></div>
+
+<script>
+/* =========================
+   CORE ENGINE
+========================= */
+const Core = {
+  version: "2.0",
+  state: {
+    user: {},
+    semesters: [],
+    settings: {
+      scale: 4.3
+    }
+  },
+  listeners: {},
+  init() {
+    const saved = localStorage.getItem("MONSTER_STATE");
+    if (saved) this.state = JSON.parse(saved);
+  },
+  save() {
+    localStorage.setItem("MONSTER_STATE", JSON.stringify(this.state));
+  },
+  on(event, fn) {
+    this.listeners[event] = this.listeners[event] || [];
+    this.listeners[event].push(fn);
+  },
+  emit(event, payload) {
+    (this.listeners[event] || []).forEach(fn => fn(payload));
+    this.save();
+  }
+};
+
+Core.init();
+
+/* =========================
+   UTIL
+========================= */
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/* =========================
+   GPA ENGINE
+========================= */
+const GPAEngine = {
+  map: {
+    "A+": 4.3, "A": 4.0, "A-": 3.7,
+    "B+": 3.3, "B": 3.0, "B-": 2.7,
+    "C+": 2.3, "C": 2.0, "C-": 1.7,
+    "D": 1.0, "F": 0.0
+  },
+  overall() {
+    let pts = 0, cr = 0;
+    Core.state.semesters.forEach(s => {
+      s.courses.forEach(c => {
+        pts += this.map[c.grade] * c.credits;
+        cr += c.credits;
+      });
+    });
+    return cr ? (pts / cr).toFixed(2) : "—";
+  }
+};
+
+/* =========================
+   PAGE SYSTEM
+========================= */
+const PageSystem = {
+  pages: {},
+  current: null,
+  register(name, render) {
+    this.pages[name] = render;
+  },
+  mount(name) {
+    this.current = name;
+    document.getElementById("app").innerHTML = this.pages[name]();
+    renderNav();
+  }
+};
+
+function renderNav() {
+  const nav = document.getElementById("nav");
+  nav.innerHTML = "";
+  Object.keys(PageSystem.pages).forEach(p => {
+    const btn = document.createElement("button");
+    btn.textContent = p;
+    btn.className = PageSystem.current === p ? "active" : "";
+    btn.onclick = () => PageSystem.mount(p);
+    nav.appendChild(btn);
+  });
+}
+
+/* =========================
+   SEMESTER & COURSE LOGIC
+========================= */
+function addSemester(name) {
+  Core.state.semesters.push({
+    id: uid(),
+    name,
+    courses: []
+  });
+  Core.emit("semester:add");
+}
+
+function addCourse(semId, data) {
+  const sem = Core.state.semesters.find(s => s.id === semId);
+  sem.courses.push({
+    id: uid(),
+    name: data.name,
+    credits: Number(data.credits),
+    grade: data.grade
+  });
+  Core.emit("course:add");
+}
+
+/* =========================
+   PAGES
+========================= */
+
+PageSystem.register("Dashboard", () => `
+  <div class="card">
+    <h3>Overall GPA</h3>
+    <div style="font-size:28px">${GPAEngine.overall()}</div>
+    <div class="small">Calculated from all semesters</div>
+  </div>
+`);
+
+PageSystem.register("Semesters", () => `
+  <div class="card">
+    <h3>Add Semester</h3>
+    <input id="semName" placeholder="e.g. Fall 2025">
+    <button class="primary" onclick="
+      addSemester(document.getElementById('semName').value);
+      PageSystem.mount('Semesters');
+    ">Add Semester</button>
+  </div>
+
+  ${Core.state.semesters.map(s => `
+    <div class="card">
+      <h3>${s.name}</h3>
+
+      <table class="table">
+        <tr><th>Course</th><th>Credits</th><th>Grade</th></tr>
+        ${s.courses.map(c => `
+          <tr>
+            <td>${c.name}</td>
+            <td>${c.credits}</td>
+            <td>${c.grade}</td>
+          </tr>
+        `).join("")}
+      </table>
+
+      <div class="flex">
+        <input id="cname-${s.id}" placeholder="Course name">
+        <input id="ccr-${s.id}" type="number" placeholder="Credits">
+        <select id="cgr-${s.id}">
+          ${Object.keys(GPAEngine.map).map(g=>`<option>${g}</option>`).join("")}
+        </select>
+      </div>
+
+      <button class="primary" onclick="
+        addCourse('${s.id}', {
+          name: document.getElementById('cname-${s.id}').value,
+          credits: document.getElementById('ccr-${s.id}').value,
+          grade: document.getElementById('cgr-${s.id}').value
+        });
+        PageSystem.mount('Semesters');
+      ">Add Course</button>
+    </div>
+  `).join("")}
+`);
+
+PageSystem.register("Profile", () => `
+  <div class="card">
+    <h3>Student Profile</h3>
+    <input id="pname" placeholder="Name" value="${Core.state.user.name || ""}">
+    <input id="pmajor" placeholder="Major" value="${Core.state.user.major || ""}">
+    <button class="primary" onclick="
+      Core.state.user.name = pname.value;
+      Core.state.user.major = pmajor.value;
+      Core.save();
+      PageSystem.mount('Profile');
+    ">Save</button>
+  </div>
+`);
+
+/* =========================
+   BOOT
+========================= */
+PageSystem.mount("Dashboard");
+</script>
+
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Ultimate GPA & Academic Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  margin: 0;
+  padding: 20px;
+}
+
+h1, h2, h3 {
+  color: #38bdf8;
+}
+
+section {
+  background: #020617;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 0 15px rgba(56,189,248,0.15);
+}
+
+button {
+  background: #38bdf8;
+  border: none;
+  color: #020617;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover {
+  background: #0ea5e9;
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 6px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  border: none;
+}
+
+.course {
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.warning {
+  color: #f87171;
+}
+
+.good {
+  color: #4ade80;
+}
+
+canvas {
+  background: #020617;
+  border-radius: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎓 Ultimate GPA & Academic Hub</h1>
+<p>Designed for International & North American Students</p>
+
+<section>
+<h2>1️⃣ GPA Scale</h2>
+<select id="scale">
+  <option value="4.0">4.0 Scale</option>
+  <option value="4.3">4.3 Scale</option>
+</select>
+</section>
+
+<section>
+<h2>2️⃣ Semester Courses</h2>
+<div id="courses"></div>
+<button onclick="addCourse()">+ Add Course</button>
+</section>
+
+<section>
+<h2>3️⃣ GPA Result</h2>
+<p id="gpaResult">Current GPA: —</p>
+<p id="risk"></p>
+</section>
+
+<section>
+<h2>4️⃣ GPA Target Predictor</h2>
+<label>Target GPA</label>
+<input type="number" step="0.01" id="targetGPA" />
+<label>Remaining Credits</label>
+<input type="number" id="remainingCredits" />
+<button onclick="predict()">Predict Required GPA</button>
+<p id="predictResult"></p>
+</section>
+
+<section>
+<h2>5️⃣ GPA Trend</h2>
+<canvas id="chart" width="300" height="150"></canvas>
+</section>
+
+<section>
+<h2>6️⃣ Export Report</h2>
+<button onclick="exportReport()">Export Text Report</button>
+<pre id="report"></pre>
+</section>
+
+<script>
+let courses = JSON.parse(localStorage.getItem("courses") || "[]");
+
+function addCourse(name="", grade="", credit=3, note="") {
+  courses.push({ name, grade, credit, note });
+  save();
+}
+
+function save() {
+  localStorage.setItem("courses", JSON.stringify(courses));
+  render();
+}
+
+function render() {
+  const box = document.getElementById("courses");
+  box.innerHTML = "";
+  courses.forEach((c, i) => {
+    box.innerHTML += `
+    <div class="course">
+      <label>Course</label>
+      <input value="${c.name}" onchange="courses[${i}].name=this.value;save()">
+      <label>Grade (A,B,C or %)</label>
+      <input value="${c.grade}" onchange="courses[${i}].grade=this.value;save()">
+      <label>Credits</label>
+      <input type="number" value="${c.credit}" onchange="courses[${i}].credit=this.value;save()">
+      <label>Note</label>
+      <textarea onchange="courses[${i}].note=this.value;save()">${c.note}</textarea>
+    </div>`;
+  });
+  calculate();
+  drawChart();
+}
+
+function gradeToGPA(g) {
+  if (!isNaN(g)) {
+    if (g >= 90) return 4.0;
+    if (g >= 80) return 3.7;
+    if (g >= 70) return 3.0;
+    if (g >= 60) return 2.0;
+    return 0;
+  }
+  const map = {A:4,A-:3.7,B+:3.3,B:3,B-:2.7,C:2,D:1,F:0};
+  return map[g.toUpperCase()] ?? 0;
+}
+
+function calculate() {
+  let total = 0, credits = 0;
+  courses.forEach(c => {
+    total += gradeToGPA(c.grade) * c.credit;
+    credits += Number(c.credit);
+  });
+  let gpa = credits ? (total / credits).toFixed(2) : "—";
+  document.getElementById("gpaResult").innerText = "Current GPA: " + gpa;
+  document.getElementById("risk").innerHTML =
+    gpa !== "—" && gpa < 2.5
+    ? "<span class='warning'>⚠ Academic Risk</span>"
+    : "<span class='good'>✓ Good Standing</span>";
+}
+
+function predict() {
+  const target = +document.getElementById("targetGPA").value;
+  const remain = +document.getElementById("remainingCredits").value;
+  let total = 0, credits = 0;
+  courses.forEach(c => {
+    total += gradeToGPA(c.grade) * c.credit;
+    credits += Number(c.credit);
+  });
+  const need = ((target*(credits+remain)-total)/remain).toFixed(2);
+  document.getElementById("predictResult").innerText =
+    "Required GPA: " + need;
+}
+
+function drawChart() {
+  const ctx = document.getElementById("chart").getContext("2d");
+  ctx.clearRect(0,0,300,150);
+  ctx.strokeStyle="#38bdf8";
+  ctx.beginPath();
+  courses.forEach((c,i)=>{
+    ctx.lineTo(i*40+10,150-gradeToGPA(c.grade)*30);
+  });
+  ctx.stroke();
+}
+
+function exportReport() {
+  let text="GPA REPORT\n\n";
+  courses.forEach(c=>{
+    text+=`${c.name} | ${c.grade} | ${c.credit}cr\nNote: ${c.note}\n\n`;
+  });
+  document.getElementById("report").innerText=text;
+}
+
+render();
+</script>
+
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ultimate Academic Planning Engine v4</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{
+  margin:0;
+  padding:20px;
+  background:#020617;
+  color:#e5e7eb;
+  font-family:Arial,Helvetica,sans-serif;
+}
+h1,h2,h3{color:#38bdf8}
+section{
+  background:#020617;
+  border:1px solid #1e293b;
+  border-radius:12px;
+  padding:16px;
+  margin-bottom:20px;
+}
+input,select,textarea{
+  width:100%;
+  padding:6px;
+  margin-bottom:10px;
+  border-radius:6px;
+  border:none;
+}
+button{
+  background:#38bdf8;
+  color:#020617;
+  border:none;
+  border-radius:8px;
+  padding:8px 14px;
+  font-weight:bold;
+  cursor:pointer;
+}
+button:hover{background:#0ea5e9}
+.good{color:#4ade80}
+.warn{color:#facc15}
+.bad{color:#f87171}
+.course{
+  border-bottom:1px solid #1e293b;
+  padding-bottom:10px;
+  margin-bottom:10px;
+}
+canvas{
+  background:#020617;
+  border-radius:8px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎓 Academic Planning Engine</h1>
+<p>Decision-level academic planning for international students</p>
+
+<section>
+<h2>1️⃣ School & Graduation Settings</h2>
+<label>Total Credits Required for Graduation</label>
+<input type="number" id="gradCredits" value="120">
+<label>Target Graduation GPA</label>
+<input type="number" step="0.01" id="gradTarget" value="3.2">
+<label>Risk Tolerance</label>
+<select id="riskMode">
+  <option value="safe">Safe</option>
+  <option value="balanced">Balanced</option>
+  <option value="aggressive">Aggressive</option>
+</select>
+</section>
+
+<section>
+<h2>2️⃣ Completed / Planned Courses</h2>
+<div id="courses"></div>
+<button onclick="addCourse()">+ Add Course</button>
+</section>
+
+<section>
+<h2>3️⃣ Academic Status Overview</h2>
+<p id="status"></p>
+<p id="decision"></p>
+</section>
+
+<section>
+<h2>4️⃣ Graduation GPA Simulation</h2>
+<p id="simulation"></p>
+<canvas id="futureChart" width="320" height="160"></canvas>
+</section>
+
+<section>
+<h2>5️⃣ Strategy Recommendation</h2>
+<p id="strategy"></p>
+</section>
+
+<script>
+let courses = JSON.parse(localStorage.getItem("v4_courses")||"[]");
+
+function addCourse(name="",grade="",credit=3,diff=1){
+  courses.push({name,grade,credit,diff});
+  save();
+}
+function save(){
+  localStorage.setItem("v4_courses",JSON.stringify(courses));
+  render();
+}
+
+function gradeToGPA(g){
+  if(!isNaN(g)){
+    if(g>=90)return 4;
+    if(g>=80)return 3.7;
+    if(g>=70)return 3;
+    if(g>=60)return 2;
+    return 0;
+  }
+  const m={A:4,"A-":3.7,"B+":3.3,B:3,"B-":2.7,C:2,D:1,F:0};
+  return m[g.toUpperCase()]??0;
+}
+
+function render(){
+  const box=document.getElementById("courses");
+  box.innerHTML="";
+  courses.forEach((c,i)=>{
+    box.innerHTML+=`
+    <div class="course">
+      <label>Course</label>
+      <input value="${c.name}" onchange="courses[${i}].name=this.value;save()">
+      <label>Grade (or expected)</label>
+      <input value="${c.grade}" onchange="courses[${i}].grade=this.value;save()">
+      <label>Credits</label>
+      <input type="number" value="${c.credit}" onchange="courses[${i}].credit=this.value;save()">
+      <label>Difficulty (1–5)</label>
+      <input type="number" min="1" max="5" value="${c.diff}" onchange="courses[${i}].diff=this.value;save()">
+    </div>`;
+  });
+  calculate();
+}
+
+function calculate(){
+  let total=0,credits=0;
+  courses.forEach(c=>{
+    total+=gradeToGPA(c.grade)*c.credit;
+    credits+=Number(c.credit);
+  });
+  const gpa=credits?total/credits:0;
+  const gradCredits=+document.getElementById("gradCredits").value;
+  const target=+document.getElementById("gradTarget").value;
+  const remain=gradCredits-credits;
+
+  document.getElementById("status").innerHTML=
+    `Completed Credits: ${credits} / ${gradCredits}<br>
+     Current GPA: ${gpa.toFixed(2)}`;
+
+  let futureNeed = remain>0
+    ? ((target*(credits+remain)-total)/remain)
+    : 0;
+
+  let decision="";
+
+  if(futureNeed>4){
+    decision="<span class='bad'>Graduation target mathematically impossible</span>";
+  }else if(futureNeed>3.7){
+    decision="<span class='warn'>Extremely high performance required</span>";
+  }else{
+    decision="<span class='good'>Graduation target achievable</span>";
+  }
+
+  document.getElementById("decision").innerHTML=decision;
+
+  document.getElementById("simulation").innerText=
+    remain>0
+    ? `Required average GPA for remaining credits: ${futureNeed.toFixed(2)}`
+    : "All credits completed";
+
+  drawFuture(gpa,futureNeed);
+  recommend(futureNeed);
+}
+
+function drawFuture(current,need){
+  const ctx=document.getElementById("futureChart").getContext("2d");
+  ctx.clearRect(0,0,320,160);
+  ctx.strokeStyle="#38bdf8";
+  ctx.beginPath();
+  ctx.moveTo(10,150-current*30);
+  ctx.lineTo(300,150-need*30);
+  ctx.stroke();
+}
+
+function recommend(need){
+  const mode=document.getElementById("riskMode").value;
+  let msg="";
+  if(mode==="safe"){
+    msg="Prioritize low-difficulty GPA boosters and avoid overload.";
+  }else if(mode==="balanced"){
+    msg="Mix core courses with GPA stabilizers.";
+  }else{
+    msg="High-risk strategy: maximize credit weight on strong subjects.";
+  }
+  document.getElementById("strategy").innerText=
+    `System Recommendation: ${msg}`;
+}
+
+render();
+</script>
+
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Academic Planning Engine v5</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{
+  margin:0;
+  padding:20px;
+  background:#020617;
+  color:#e5e7eb;
+  font-family:Arial,Helvetica,sans-serif;
+}
+h1,h2,h3{color:#38bdf8}
+section{
+  background:#020617;
+  border:1px solid #1e293b;
+  border-radius:14px;
+  padding:16px;
+  margin-bottom:20px;
+}
+input,select,textarea{
+  width:100%;
+  padding:6px;
+  margin-bottom:10px;
+  border-radius:6px;
+  border:none;
+}
+button{
+  background:#38bdf8;
+  color:#020617;
+  border:none;
+  border-radius:8px;
+  padding:8px 14px;
+  font-weight:bold;
+  cursor:pointer;
+}
+button:hover{background:#0ea5e9}
+.good{color:#4ade80}
+.warn{color:#facc15}
+.bad{color:#f87171}
+.course{
+  border-bottom:1px solid #1e293b;
+  padding-bottom:10px;
+  margin-bottom:10px;
+}
+.rule{
+  font-size:14px;
+  color:#94a3b8;
+}
+canvas{
+  background:#020617;
+  border-radius:10px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎓 Academic Planning Engine v5</h1>
+<p>Multi-University GPA Rule System</p>
+
+<section>
+<h2>1️⃣ University Rule Engine</h2>
+<select id="school" onchange="render()">
+  <option value="generic">Generic North America</option>
+  <option value="uoft">University of Toronto</option>
+  <option value="ubc">University of British Columbia</option>
+  <option value="us">US College (A-F)</option>
+</select>
+<p class="rule" id="ruleText"></p>
+</section>
+
+<section>
+<h2>2️⃣ Graduation Configuration</h2>
+<label>Total Credits Required</label>
+<input type="number" id="gradCredits" value="120">
+<label>Target Graduation GPA</label>
+<input type="number" step="0.01" id="targetGPA" value="3.2">
+</section>
+
+<section>
+<h2>3️⃣ Courses (Completed / Planned)</h2>
+<div id="courses"></div>
+<button onclick="addCourse()">+ Add Course</button>
+</section>
+
+<section>
+<h2>4️⃣ Academic Evaluation</h2>
+<p id="status"></p>
+<p id="evaluation"></p>
+</section>
+
+<section>
+<h2>5️⃣ GPA Trajectory</h2>
+<canvas id="chart" width="340" height="170"></canvas>
+</section>
+
+<section>
+<h2>6️⃣ Advisor-Level Recommendation</h2>
+<p id="advice"></p>
+</section>
+
+<script>
+const RULES={
+  generic:{
+    name:"Generic North America",
+    map:g=>{
+      if(!isNaN(g)){
+        if(g>=90)return 4;
+        if(g>=80)return 3.7;
+        if(g>=70)return 3;
+        if(g>=60)return 2;
+        return 0;
+      }
+      return {A:4,"A-":3.7,"B+":3.3,B:3,"B-":2.7,C:2,D:1,F:0}[g]||0;
+    },
+    note:"Standard 4.0 GPA with percentage support."
+  },
+  uoft:{
+    name:"University of Toronto",
+    map:g=>{
+      if(!isNaN(g)){
+        if(g>=85)return 4;
+        if(g>=80)return 3.7;
+        if(g>=77)return 3.3;
+        if(g>=73)return 3;
+        if(g>=70)return 2.7;
+        if(g>=67)return 2.3;
+        if(g>=63)return 2;
+        if(g>=60)return 1.7;
+        return 0;
+      }
+      return {A:4,"A-":3.7,"B+":3.3,B:3,"B-":2.7,C+:2.3,C:2,D:1,F:0}[g]||0;
+    },
+    note:"UofT GPA scale with fine percentage brackets."
+  },
+  ubc:{
+    name:"UBC",
+    map:g=>{
+      if(!isNaN(g)){
+        if(g>=90)return 4;
+        if(g>=85)return 3.7;
+        if(g>=80)return 3.3;
+        if(g>=76)return 3;
+        if(g>=72)return 2.7;
+        if(g>=68)return 2.3;
+        if(g>=64)return 2;
+        if(g>=60)return 1.7;
+        return 0;
+      }
+      return {A+:4,A:4,"A-":3.7,B+:3.3,B:3,"B-":2.7,C+:2.3,C:2,D:1,F:0}[g]||0;
+    },
+    note:"UBC GPA with A+ recognized."
+  },
+  us:{
+    name:"US College",
+    map:g=>{
+      return {A:4,"A-":3.7,B+:3.3,B:3,"B-":2.7,C+:2.3,C:2,D:1,F:0}[g.toUpperCase()]||0;
+    },
+    note:"Letter-grade only GPA system."
+  }
+};
+
+let courses=JSON.parse(localStorage.getItem("v5_courses")||"[]");
+
+function addCourse(name="",grade="",credit=3){
+  courses.push({name,grade,credit});
+  save();
+}
+function save(){
+  localStorage.setItem("v5_courses",JSON.stringify(courses));
+  render();
+}
+
+function render(){
+  const school=document.getElementById("school").value;
+  document.getElementById("ruleText").innerText=RULES[school].note;
+
+  const box=document.getElementById("courses");
+  box.innerHTML="";
+  courses.forEach((c,i)=>{
+    box.innerHTML+=`
+    <div class="course">
+      <label>Course</label>
+      <input value="${c.name}" onchange="courses[${i}].name=this.value;save()">
+      <label>Grade / Expected</label>
+      <input value="${c.grade}" onchange="courses[${i}].grade=this.value;save()">
+      <label>Credits</label>
+      <input type="number" value="${c.credit}" onchange="courses[${i}].credit=this.value;save()">
+    </div>`;
+  });
+  calculate();
+}
+
+function calculate(){
+  const school=document.getElementById("school").value;
+  let total=0,credits=0;
+  courses.forEach(c=>{
+    total+=RULES[school].map(c.grade)*c.credit;
+    credits+=Number(c.credit);
+  });
+  const gpa=credits?total/credits:0;
+  const grad=+document.getElementById("gradCredits").value;
+  const target=+document.getElementById("targetGPA").value;
+  const remain=grad-credits;
+  const need=remain>0?((target*(credits+remain)-total)/remain):0;
+
+  document.getElementById("status").innerHTML=
+    `School: ${RULES[school].name}<br>
+     Credits: ${credits}/${grad}<br>
+     Current GPA: ${gpa.toFixed(2)}`;
+
+  let evalText="";
+  if(need>4)evalText="<span class='bad'>Target GPA impossible under current rules</span>";
+  else if(need>3.7)evalText="<span class='warn'>Requires near-perfect future performance</span>";
+  else evalText="<span class='good'>Graduation target achievable</span>";
+  document.getElementById("evaluation").innerHTML=evalText;
+
+  draw(gpa,need);
+  advise(school,gpa,need);
+}
+
+function draw(cur,need){
+  const ctx=document.getElementById("chart").getContext("2d");
+  ctx.clearRect(0,0,340,170);
+  ctx.strokeStyle="#38bdf8";
+  ctx.beginPath();
+  ctx.moveTo(10,150-cur*30);
+  ctx.lineTo(330,150-need*30);
+  ctx.stroke();
+}
+
+function advise(school,gpa,need){
+  let msg="";
+  if(school==="uoft"&&gpa<3){
+    msg="UofT warning: GPA below 3.0 reduces program flexibility.";
+  }else if(school==="ubc"&&need>3.5){
+    msg="UBC strategy: prioritize high-credit electives to stabilize GPA.";
+  }else if(school==="us"&&need>3.3){
+    msg="US system: avoid C grades — they heavily damage cumulative GPA.";
+  }else{
+    msg="Maintain balance between credit load and GPA stability.";
+  }
+  document.getElementById("advice").innerText=msg;
+}
+
+render();
+</script>
+
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Academic Planning Engine v6 · Pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{
+  margin:0;
+  padding:20px;
+  background:#020617;
+  color:#e5e7eb;
+  font-family:Arial,Helvetica,sans-serif;
+}
+h1,h2,h3{color:#38bdf8}
+section{
+  background:#020617;
+  border:1px solid #1e293b;
+  border-radius:14px;
+  padding:16px;
+  margin-bottom:20px;
+}
+input,select{
+  width:100%;
+  padding:6px;
+  margin-bottom:10px;
+  border-radius:6px;
+  border:none;
+}
+button{
+  background:#38bdf8;
+  color:#020617;
+  border:none;
+  border-radius:8px;
+  padding:8px 14px;
+  font-weight:bold;
+  cursor:pointer;
+}
+button.locked{
+  background:#334155;
+  color:#94a3b8;
+  cursor:not-allowed;
+}
+.pro{
+  color:#facc15;
+  font-weight:bold;
+}
+.bad{color:#f87171}
+.warn{color:#facc15}
+.good{color:#4ade80}
+.course{
+  border-bottom:1px solid #1e293b;
+  padding-bottom:10px;
+  margin-bottom:10px;
+}
+.paywall{
+  border:1px dashed #facc15;
+  padding:12px;
+  border-radius:12px;
+  background:#020617;
+}
+canvas{
+  background:#020617;
+  border-radius:10px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎓 Academic Planning Engine <span class="pro">PRO</span></h1>
+<p>From calculator → decision engine → paid product</p>
+
+<section>
+<h2>🔐 Account</h2>
+<p>Status: <span id="statusTag"></span></p>
+<button onclick="upgrade()">Upgrade to Pro</button>
+</section>
+
+<section>
+<h2>🏫 University Rule</h2>
+<select id="school" onchange="render()">
+  <option value="generic">Generic</option>
+  <option value="uoft">University of Toronto</option>
+  <option value="ubc">UBC</option>
+  <option value="us">US College</option>
+</select>
+<p id="ruleText"></p>
+</section>
+
+<section>
+<h2>🎯 Graduation Target</h2>
+<input type="number" id="gradCredits" value="120">
+<input type="number" step="0.01" id="targetGPA" value="3.2">
+</section>
+
+<section>
+<h2>📚 Courses</h2>
+<div id="courses"></div>
+<button onclick="addCourse()">+ Add Course</button>
+</section>
+
+<section>
+<h2>📊 Evaluation</h2>
+<p id="summary"></p>
+<p id="result"></p>
+</section>
+
+<section>
+<h2>🧠 Advisor Analysis <span class="pro">(Pro)</span></h2>
+<div id="advisor"></div>
+</section>
+
+<script>
+/* ====== Pro State ====== */
+let isPro = localStorage.getItem("isPro")==="true";
+
+function upgrade(){
+  isPro=true;
+  localStorage.setItem("isPro","true");
+  render();
+}
+
+/* ====== Rules ====== */
+const RULES={
+  generic:{
+    map:g=>!isNaN(g)?(g>=90?4:g>=80?3.7:g>=70?3:g>=60?2:0):{A:4,B:3,C:2,D:1,F:0}[g]||0,
+    note:"Standard 4.0 GPA"
+  },
+  uoft:{
+    map:g=>!isNaN(g)?(g>=85?4:g>=80?3.7:g>=77?3.3:g>=73?3:g>=70?2.7:g>=67?2.3:g>=63?2:g>=60?1.7:0):{A:4,B:3,C:2,D:1,F:0}[g]||0,
+    note:"UofT detailed scale"
+  },
+  ubc:{
+    map:g=>!isNaN(g)?(g>=90?4:g>=85?3.7:g>=80?3.3:g>=76?3:g>=72?2.7:g>=68?2.3:g>=64?2:g>=60?1.7:0):{A:4,B:3,C:2,D:1,F:0}[g]||0,
+    note:"UBC GPA"
+  },
+  us:{
+    map:g=>({A:4,"A-":3.7,B+:3.3,B:3,"B-":2.7,C:2,D:1,F:0}[g]||0),
+    note:"US letter system"
+  }
+};
+
+/* ====== Data ====== */
+let courses = JSON.parse(localStorage.getItem("v6_courses")||"[]");
+
+function addCourse(name="",grade="",credit=3){
+  courses.push({name,grade,credit});
+  save();
+}
+function save(){
+  localStorage.setItem("v6_courses",JSON.stringify(courses));
+  render();
+}
+
+function render(){
+  document.getElementById("statusTag").innerHTML=
+    isPro? "<span class='pro'>PRO</span>":"Free User";
+
+  const school=document.getElementById("school").value;
+  document.getElementById("ruleText").innerText=
+    RULES[school].note + (isPro?"":" (Pro unlocks more schools)");
+
+  const box=document.getElementById("courses");
+  box.innerHTML="";
+  courses.forEach((c,i)=>{
+    box.innerHTML+=`
+    <div class="course">
+      <input placeholder="Course" value="${c.name}" onchange="courses[${i}].name=this.value;save()">
+      <input placeholder="Grade" value="${c.grade}" onchange="courses[${i}].grade=this.value;save()">
+      <input type="number" value="${c.credit}" onchange="courses[${i}].credit=this.value;save()">
+    </div>`;
+  });
+
+  calculate();
+}
+
+function calculate(){
+  const school=document.getElementById("school").value;
+  let total=0,credits=0;
+  courses.forEach(c=>{
+    total+=RULES[school].map(c.grade)*c.credit;
+    credits+=Number(c.credit);
+  });
+  const gpa=credits?total/credits:0;
+  const grad=+document.getElementById("gradCredits").value;
+  const target=+document.getElementById("targetGPA").value;
+  const remain=grad-credits;
+  const need=remain>0?((target*(credits+remain)-total)/remain):0;
+
+  document.getElementById("summary").innerHTML=
+    `Credits: ${credits}/${grad}<br>Current GPA: ${gpa.toFixed(2)}`;
+
+  let res="";
+  if(need>4)res="<span class='bad'>Target impossible</span>";
+  else if(need>3.7)res="<span class='warn'>Extremely high future GPA required</span>";
+  else res="<span class='good'>Target achievable</span>";
+  document.getElementById("result").innerHTML=res;
+
+  advisor(gpa,need);
+}
+
+function advisor(gpa,need){
+  const box=document.getElementById("advisor");
+  if(!isPro){
+    box.innerHTML=`
+      <div class="paywall">
+        🔒 Pro-only insight<br>
+        Upgrade to unlock personalized academic strategy.
+      </div>`;
+    return;
+  }
+  let msg="";
+  if(need>3.7){
+    msg="You must prioritize GPA protection courses and reduce risk exposure.";
+  }else if(gpa<2.7){
+    msg="Academic recovery mode recommended: low difficulty, high credit.";
+  }else{
+    msg="Balanced strategy: combine core requirements with GPA stabilizers.";
+  }
+  box.innerHTML=msg;
+}
+
+render();
+</script>
+
+</body>
+</html>
