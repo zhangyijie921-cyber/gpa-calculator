@@ -300,4 +300,217 @@ PageSystem.mount("Dashboard");
 
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Ultimate GPA & Academic Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  margin: 0;
+  padding: 20px;
+}
+
+h1, h2, h3 {
+  color: #38bdf8;
+}
+
+section {
+  background: #020617;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 0 15px rgba(56,189,248,0.15);
+}
+
+button {
+  background: #38bdf8;
+  border: none;
+  color: #020617;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover {
+  background: #0ea5e9;
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 6px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  border: none;
+}
+
+.course {
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.warning {
+  color: #f87171;
+}
+
+.good {
+  color: #4ade80;
+}
+
+canvas {
+  background: #020617;
+  border-radius: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🎓 Ultimate GPA & Academic Hub</h1>
+<p>Designed for International & North American Students</p>
+
+<section>
+<h2>1️⃣ GPA Scale</h2>
+<select id="scale">
+  <option value="4.0">4.0 Scale</option>
+  <option value="4.3">4.3 Scale</option>
+</select>
+</section>
+
+<section>
+<h2>2️⃣ Semester Courses</h2>
+<div id="courses"></div>
+<button onclick="addCourse()">+ Add Course</button>
+</section>
+
+<section>
+<h2>3️⃣ GPA Result</h2>
+<p id="gpaResult">Current GPA: —</p>
+<p id="risk"></p>
+</section>
+
+<section>
+<h2>4️⃣ GPA Target Predictor</h2>
+<label>Target GPA</label>
+<input type="number" step="0.01" id="targetGPA" />
+<label>Remaining Credits</label>
+<input type="number" id="remainingCredits" />
+<button onclick="predict()">Predict Required GPA</button>
+<p id="predictResult"></p>
+</section>
+
+<section>
+<h2>5️⃣ GPA Trend</h2>
+<canvas id="chart" width="300" height="150"></canvas>
+</section>
+
+<section>
+<h2>6️⃣ Export Report</h2>
+<button onclick="exportReport()">Export Text Report</button>
+<pre id="report"></pre>
+</section>
+
+<script>
+let courses = JSON.parse(localStorage.getItem("courses") || "[]");
+
+function addCourse(name="", grade="", credit=3, note="") {
+  courses.push({ name, grade, credit, note });
+  save();
+}
+
+function save() {
+  localStorage.setItem("courses", JSON.stringify(courses));
+  render();
+}
+
+function render() {
+  const box = document.getElementById("courses");
+  box.innerHTML = "";
+  courses.forEach((c, i) => {
+    box.innerHTML += `
+    <div class="course">
+      <label>Course</label>
+      <input value="${c.name}" onchange="courses[${i}].name=this.value;save()">
+      <label>Grade (A,B,C or %)</label>
+      <input value="${c.grade}" onchange="courses[${i}].grade=this.value;save()">
+      <label>Credits</label>
+      <input type="number" value="${c.credit}" onchange="courses[${i}].credit=this.value;save()">
+      <label>Note</label>
+      <textarea onchange="courses[${i}].note=this.value;save()">${c.note}</textarea>
+    </div>`;
+  });
+  calculate();
+  drawChart();
+}
+
+function gradeToGPA(g) {
+  if (!isNaN(g)) {
+    if (g >= 90) return 4.0;
+    if (g >= 80) return 3.7;
+    if (g >= 70) return 3.0;
+    if (g >= 60) return 2.0;
+    return 0;
+  }
+  const map = {A:4,A-:3.7,B+:3.3,B:3,B-:2.7,C:2,D:1,F:0};
+  return map[g.toUpperCase()] ?? 0;
+}
+
+function calculate() {
+  let total = 0, credits = 0;
+  courses.forEach(c => {
+    total += gradeToGPA(c.grade) * c.credit;
+    credits += Number(c.credit);
+  });
+  let gpa = credits ? (total / credits).toFixed(2) : "—";
+  document.getElementById("gpaResult").innerText = "Current GPA: " + gpa;
+  document.getElementById("risk").innerHTML =
+    gpa !== "—" && gpa < 2.5
+    ? "<span class='warning'>⚠ Academic Risk</span>"
+    : "<span class='good'>✓ Good Standing</span>";
+}
+
+function predict() {
+  const target = +document.getElementById("targetGPA").value;
+  const remain = +document.getElementById("remainingCredits").value;
+  let total = 0, credits = 0;
+  courses.forEach(c => {
+    total += gradeToGPA(c.grade) * c.credit;
+    credits += Number(c.credit);
+  });
+  const need = ((target*(credits+remain)-total)/remain).toFixed(2);
+  document.getElementById("predictResult").innerText =
+    "Required GPA: " + need;
+}
+
+function drawChart() {
+  const ctx = document.getElementById("chart").getContext("2d");
+  ctx.clearRect(0,0,300,150);
+  ctx.strokeStyle="#38bdf8";
+  ctx.beginPath();
+  courses.forEach((c,i)=>{
+    ctx.lineTo(i*40+10,150-gradeToGPA(c.grade)*30);
+  });
+  ctx.stroke();
+}
+
+function exportReport() {
+  let text="GPA REPORT\n\n";
+  courses.forEach(c=>{
+    text+=`${c.name} | ${c.grade} | ${c.credit}cr\nNote: ${c.note}\n\n`;
+  });
+  document.getElementById("report").innerText=text;
+}
+
+render();
+</script>
+
+</body>
+</html>
 
